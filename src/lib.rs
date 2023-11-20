@@ -3,6 +3,7 @@
 
 use std::sync::{Arc, Condvar, Mutex};
 use std::collections::VecDeque;
+use std::thread;
 
 pub struct Sender<T> {
     shared: Arc<Shared<T>>,
@@ -112,5 +113,19 @@ mod tests {
         let (mut tx, rx) = channel();
         drop(rx);
         tx.send(2);
+    }
+
+    #[test]
+    fn with_threads() {
+        let (mut tx, mut rx) = channel();
+        thread::spawn(move || {
+            tx.send(3);
+        });
+
+        let receiver = thread::spawn(move || {
+            println!("{}", rx.recv().unwrap());
+        });
+
+        receiver.join().unwrap();
     }
 }
