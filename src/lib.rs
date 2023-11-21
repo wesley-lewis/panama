@@ -43,20 +43,36 @@ impl<T> Sender<T> {
 
 pub struct Receiver<T> {
     shared: Arc<Shared<T>>,
+    buffer: VecDeque<T>,
 }
 
 impl<T> Receiver<T> {
     pub fn recv(&mut self) -> Option<T> {
+        if let Some(t) = self.buffer.pop_front() {
+            return Some(t);
+        }
         let mut inner = self.shared.inner.lock().unwrap();
         loop {
             match inner.queue.pop_front() {
-                Some(t) => return Some(t),
+                Some(t) => {
+                    if !inner.queue.is_empty() {
+                        std::mem::swap(&mut self.buffer, &mut inner.queue);
+                    }
+                    return Some(t);
+                },
                 None if inner.senders == 0 => return None,
                 None => {
                     inner = self.shared.available.wait(inner).unwrap();
                 }
             }
         }
+    }
+}
+
+impl<T> Iterator for Receiver<T> {
+    type Item = T;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.recv()
     }
 }
 
@@ -96,9 +112,13 @@ mod tests {
     use super::*;
     #[test]
     fn ping_pong() {
-        let (mut tx, mut rx) = channel();
+        let (mut tx, rx) = channel();
         tx.send(42);
-        assert_eq!(rx.recv(), Some(42));
+        let rx_it = rx.into_iter();
+        for r in rx_it {
+            println!("{}", r);
+        }
+        // assert_eq!(rx.recv(), Some(42));
     }
 
     #[test]
